@@ -1,4 +1,3 @@
-// app.module.ts
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -6,9 +5,16 @@ import { MangaModule } from './manga/manga.module';
 import { JobModule } from './job/job.module';
 import { DatabaseModule } from './database/database.module';
 import { BullModule } from '@nestjs/bullmq';
+import { AwsService } from './aws/aws.service';
+import { AwsModule } from './aws/aws.module';
+import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
+    ConfigModule.forRoot(),
+    AwsModule,
     MangaModule,
     JobModule,
     DatabaseModule,
@@ -26,8 +32,11 @@ import { BullModule } from '@nestjs/bullmq';
         },
       },
     }),
+    BullModule.registerQueue({
+      name: 'jobsQueue',
+    }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AwsService],
 })
 export class AppModule {}

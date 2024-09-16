@@ -6,14 +6,12 @@ export class MangaService {
   private readonly logger = new Logger(MangaService.name);
 
   async getSearchManga(searchParams: string) {
+    const BROWSER_WS =
+      'wss://brd-customer-hl_4b56736d-zone-scraping_browser1:ar43hh80gv6r@brd.superproxy.io:9222';
     let browser;
     try {
       // Launch browser with necessary settings
-      browser = await puppeteer.launch({
-        headless: true, // Set to false if you want to debug with the browser window open
-        slowMo: 10, // Optional: slows down the execution for better visibility
-        args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'], // Helps with deployment in Docker or cloud environments
-      });
+      browser = await puppeteer.connect({ browserWSEndpoint: BROWSER_WS });
 
       const page = await browser.newPage();
       const url = `https://makimaaaaa.com/?s=${searchParams}`;

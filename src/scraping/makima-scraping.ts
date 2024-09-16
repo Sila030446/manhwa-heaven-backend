@@ -2,31 +2,39 @@ import { Page } from 'puppeteer';
 
 interface MangaDetails {
   title: string;
+  titleSlug: string;
   alternativeTitle?: string;
   coverImageUrl: string;
   description: string;
   authors: { name: string; slug: string }[];
   artist: { name: string; slug: string }[];
-  serialization: { name: string; slug: string }[];
+  serialization?: string;
   genres: { name: string; slug: string }[];
   type: { name: string; slug: string }[];
   status: { name: string; slug: string }[];
-  chapters: { title?: string; url: string }[]; // เพิ่ม chapters เป็นอาเรย์ของอ็อบเจ็กต์
+  chapters: { title?: string; url: string; slug: string }[];
 }
 
+// Function to scrape manga details
 export const startMakimaScraping = async (
   page: Page,
-  url: string, // รับ URL เป็นพารามิเตอร์
+  url: string,
 ): Promise<MangaDetails> => {
   try {
-    // ไปยัง URL ที่กำหนด
-    await page.goto(url, { waitUntil: 'networkidle2' }); // เพิ่ม waitUntil เพื่อรอให้หน้าทั้งหมดโหลดเสร็จ
+    await page.goto(url, { waitUntil: 'networkidle2' });
 
-    // ดึงข้อมูลทั้งหมดจากหน้าเพจ
     const manga = await page.evaluate(() => {
+      const generateSlug = (text: string): string => {
+        return text
+          .toLowerCase()
+          .replace(/\s+/g, '-') // Replace spaces with hyphens
+          .replace(/[^\w-]+/g, ''); // Remove special characters
+      };
+
       const title =
         document.querySelector('#titlemove > h1')?.textContent ||
         'Unknown Title';
+      const titleSlug = generateSlug(title);
       const alternativeTitle =
         document.querySelector('#titlemove > span')?.textContent || '';
       const coverImageUrl =
@@ -38,8 +46,11 @@ export const startMakimaScraping = async (
       const descriptionElement = document.querySelector(
         'div.entry-content.entry-content-single[itemprop="description"]',
       );
+      const serialization =
+        document.querySelector(
+          'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(6) > i',
+        )?.textContent || 'Unknown serialization';
 
-      // ถ้าเจอ div ที่ต้องการ ก็รวมข้อความจากทุก <p> แท็ก
       const description = descriptionElement
         ? Array.from(descriptionElement.querySelectorAll('p'))
             .map((p) => p.textContent?.trim() || '')
@@ -49,10 +60,7 @@ export const startMakimaScraping = async (
       const getText = (selector: string) =>
         Array.from(document.querySelectorAll(selector)).map((el) => {
           const text = el.textContent || '';
-          return {
-            name: text,
-            slug: text.toLowerCase().replace(/\s+/g, '-'),
-          };
+          return { name: text, slug: generateSlug(text) };
         });
 
       const getGenres = (selector: string) =>
@@ -60,44 +68,42 @@ export const startMakimaScraping = async (
           const name = el.textContent || '';
           const slug = (el.getAttribute('href') || '')
             .split('/')
-            .slice(-2, -1)[0]; // ดึง slug จาก href
-          return {
-            name,
-            slug,
-          };
+            .slice(-2, -1)[0];
+          return { name, slug };
         });
 
       const authors = getText(
         'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(4) > i',
       );
-
       const artist = getText(
         'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(5) > i',
-      );
-
-      const serialization = getText(
-        'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(6) > i',
       );
 
       const type = getText(
         'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(2) > a',
       );
-
       const status = getText(
         'div.main-info > div.info-left > div > div.tsinfo.bixbox > div:nth-child(1) > i',
       );
-
       const genres = getGenres('span.mgen > a');
 
       const chapters = Array.from(
         document.querySelectorAll('#chapterlist > ul > li > div > div > a'),
-      ).map((chapter) => ({
-        title: chapter.querySelector('span.chapternum')?.textContent?.trim(),
-        url: chapter.getAttribute('href') || '',
-      }));
+      ).map((chapter) => {
+        const chapterTitle = chapter
+          .querySelector('span.chapternum')
+          ?.textContent?.trim();
+        const chapterSlug = generateSlug(chapterTitle || 'chapter-title');
+        return {
+          title: chapterTitle,
+          url: chapter.getAttribute('href') || '',
+          slug: chapterSlug, // Ensure chapter slug is unique
+        };
+      });
 
       return {
         title,
+        titleSlug,
         alternativeTitle,
         coverImageUrl,
         description,
@@ -107,13 +113,92 @@ export const startMakimaScraping = async (
         type,
         status,
         genres,
-        chapters, // เพิ่ม chapters ในการคืนค่า
+        chapters,
       };
     });
 
     return manga;
   } catch (error) {
-    console.error('Error during scraping:', error.message); // log ข้อความ error
-    throw error; // ให้ throw error ออกไปเพื่อให้เรียกใช้ฟังก์ชันรู้ว่ามีข้อผิดพลาดเกิดขึ้น
+    console.error('Error during scraping:', error.message);
+    throw error; // Re-throw the error for higher-level handling
   }
+};
+
+// Function to scrape chapter images from the given chapter URL
+export const scrapeChapterImages = async (
+  page: Page,
+  chapterUrl: string,
+): Promise<string[]> => {
+  const MAX_RETRIES = 100;
+  const RETRY_DELAY = 20000; // milliseconds
+
+  let retries = 0;
+  while (retries < MAX_RETRIES) {
+    try {
+      await page.goto(chapterUrl, { waitUntil: 'networkidle2' });
+
+      // Scroll to the bottom to ensure lazy-loaded images are triggered
+      await autoScroll(page);
+
+      // Wait for all images to load
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll('#readerarea > img')).every(
+          (img) => {
+            const image = img as HTMLImageElement;
+            return image.complete && image.naturalHeight > 0;
+          },
+        ),
+      );
+
+      // Extract image URLs
+      const imageUrls = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('#readerarea > img')).map(
+          (img) => {
+            const image = img as HTMLImageElement;
+            // Use data-src if present, otherwise fall back to src
+            return (
+              image.getAttribute('data-src') || image.getAttribute('src') || ''
+            );
+          },
+        );
+      });
+
+      return imageUrls.filter((url) => url); // Filter out empty URLs
+    } catch (error) {
+      console.error('Error during scraping chapter images:', error.message);
+
+      retries += 1;
+      if (retries >= MAX_RETRIES) {
+        throw error; // Re-throw the error after max retries
+      }
+
+      console.log(
+        `Retrying in ${RETRY_DELAY}ms... (${retries}/${MAX_RETRIES})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+
+  return []; // Return empty array if all retries fail
+};
+
+// Helper function to scroll to the bottom of the page
+const autoScroll = async (page: Page) => {
+  await page.evaluate(async () => {
+    const distance = 100; // Distance to scroll each time
+    const delay = 100; // Delay between scrolls
+    const scrollHeight = document.body.scrollHeight;
+    let previousScrollTop = 0;
+
+    while (document.body.scrollTop + window.innerHeight < scrollHeight) {
+      window.scrollBy(0, distance);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      // Break the loop if no further scrolling is detected
+      if (document.body.scrollTop === previousScrollTop) {
+        break;
+      }
+      previousScrollTop = document.body.scrollTop;
+    }
+  });
 };
