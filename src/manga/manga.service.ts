@@ -6,19 +6,17 @@ export class MangaService {
   private readonly logger = new Logger(MangaService.name);
 
   async getSearchManga(searchParams: string) {
-    const BROWSER_WS =
-      'wss://brd-customer-hl_4b56736d-zone-scraping_browser1:ar43hh80gv6r@brd.superproxy.io:9222';
     let browser;
     try {
       // Launch browser with necessary settings
-      browser = await puppeteer.connect({ browserWSEndpoint: BROWSER_WS });
+      browser = await puppeteer.launch({ headless: false });
 
       const page = await browser.newPage();
       const url = `https://makimaaaaa.com/?s=${searchParams}`;
       this.logger.log(`Navigating to URL: ${url}`);
 
       // Go to the page and wait for network to be idle to ensure it’s fully loaded
-      await page.goto(url, { waitUntil: 'networkidle2' });
+      await page.goto(url);
 
       // Wait for the selector to ensure the content has loaded
       await page.waitForSelector(

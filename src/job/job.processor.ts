@@ -34,6 +34,10 @@ export class JobProcessor extends WorkerHost {
 
     // Loop through each job and process it
     for (const job of jobs) {
+      await this.databaseService.job.update({
+        where: { id: job.id },
+        data: { isComplete: false, status: 'updated' },
+      });
       console.log(`Processing job for URL: ${job.url}`);
       await this.process({
         data: {
@@ -42,6 +46,10 @@ export class JobProcessor extends WorkerHost {
           jobType: { type: 'makima' },
         },
       } as Job<any>);
+      await this.databaseService.job.update({
+        where: { id: job.id },
+        data: { isComplete: true, status: 'complete' },
+      });
     }
   }
 
@@ -53,11 +61,11 @@ export class JobProcessor extends WorkerHost {
       const page = await browser.newPage();
 
       if (!job.data.url || !job.data.jobType) {
-        throw new Error('Invalid job data: URL or jobType is missing');
+        throw new Error('ข้อมูลงานไม่ถูกต้อง: URL หรือ jobType หายไป');
       }
 
       if (job.data.jobType?.type === 'makima') {
-        console.log('Connected! Navigate to ' + job.data.url);
+        console.log('เชื่อมต่อ! กำลังนำทางไปที่ ' + job.data.url);
         await page.goto(job.data.url);
 
         const manga = await startMakimaScraping(page, job.data.url);
@@ -65,19 +73,16 @@ export class JobProcessor extends WorkerHost {
         const existingManga = await this.databaseService.mangaManhwa.findUnique(
           {
             where: { slug: manga.titleSlug },
-            include: { chapters: true }, // Include chapters for comparison
+            include: { chapters: true },
           },
         );
 
         if (existingManga) {
-          console.log('Manga already exists');
+          console.log('มังงะมีอยู่แล้ว');
 
-          // Extract existing chapter slugs for comparison
           const existingChapterSlugs = existingManga.chapters.map(
             (chapter) => chapter.slug,
           );
-
-          // Filter new chapters by checking if their slugs exist in the database
           const newChapters = manga.chapters.filter(
             (chapter) =>
               !existingChapterSlugs.includes(
@@ -85,10 +90,9 @@ export class JobProcessor extends WorkerHost {
               ),
           );
 
-          console.log(`Found ${newChapters.length} new chapters`);
+          console.log(`พบตอนใหม่จำนวน ${newChapters.length} ตอน`);
 
           if (newChapters.length > 0) {
-            // Save new chapters
             for (const [index, newChapter] of newChapters.reverse().entries()) {
               const createdChapter = await this.databaseService.chapter.create({
                 data: {
@@ -99,58 +103,56 @@ export class JobProcessor extends WorkerHost {
                   mangaManhwa: { connect: { id: existingManga.id } },
                 },
               });
-              console.log(`New chapter saved: ${createdChapter.slug}`);
+              console.log(`ตอนใหม่ถูกบันทึก: ${createdChapter.slug}`);
 
-              // Scrape images for the new chapter
-              console.log(
-                `Scraping images for chapter: ${createdChapter.slug}`,
-              );
+              console.log(`กำลังดึงรูปภาพสำหรับตอน: ${createdChapter.slug}`);
               const imageUrls = await scrapeChapterImages(page, newChapter.url);
 
-              let pageNumber = 1;
-              for (const imageUrl of imageUrls) {
-                try {
-                  const uploadedImageUrl =
-                    await this.awsService.uploadImageFromUrl(
-                      imageUrl,
-                      manga.title,
-                      newChapter.title || `page-${pageNumber}`,
+              // ใช้ Promise.all สำหรับการอัปโหลดพร้อมกัน
+              await Promise.all(
+                imageUrls.map(async (imageUrl, pageNumber) => {
+                  try {
+                    const uploadedImageUrl =
+                      await this.awsService.uploadImageFromUrl(
+                        imageUrl,
+                        manga.title,
+                        newChapter.title || `page-${pageNumber + 1}`,
+                      );
+
+                    await this.databaseService.page.create({
+                      data: {
+                        imageUrl: uploadedImageUrl,
+                        pageNumber: pageNumber + 1,
+                        chapter: { connect: { id: createdChapter.id } },
+                      },
+                    });
+
+                    console.log(
+                      `รูปภาพถูกบันทึกลง S3 และฐานข้อมูล: ${uploadedImageUrl}`,
                     );
-
-                  await this.databaseService.page.create({
-                    data: {
-                      imageUrl: uploadedImageUrl,
-                      pageNumber: pageNumber++,
-                      chapter: { connect: { id: createdChapter.id } },
-                    },
-                  });
-
-                  console.log(
-                    `Image saved to S3 and database: ${uploadedImageUrl}`,
-                  );
-                } catch (error) {
-                  console.error(
-                    `Error uploading image to S3: ${error.message}`,
-                  );
-                }
-              }
+                  } catch (error) {
+                    console.error(
+                      `เกิดข้อผิดพลาดในการอัปโหลดรูปภาพไปที่ S3: ${error.message}`,
+                    );
+                  }
+                }),
+              );
             }
           } else {
-            console.log('No new chapters found.');
+            console.log('ไม่พบตอนใหม่.');
           }
 
           return;
         }
 
-        // If manga doesn't exist, save it and all chapters
-        console.log('New manga, saving...');
+        // ถ้ามังงะไม่เคยมีในฐานข้อมูล ให้บันทึกมังงะและตอนทั้งหมด
+        console.log('มังงะใหม่, กำลังบันทึก...');
 
         const coverImageUrl = await this.awsService.uploadImageFromUrl(
           manga.coverImageUrl,
           manga.title,
           'cover',
         );
-
         const reversedChapters = manga.chapters.reverse();
 
         const savedManga = await this.databaseService.mangaManhwa.create({
@@ -192,36 +194,41 @@ export class JobProcessor extends WorkerHost {
           include: { chapters: true },
         });
 
-        console.log('Manga saved:', savedManga);
+        console.log('มังงะถูกบันทึก:', savedManga);
 
         for (const chapter of savedManga.chapters) {
-          console.log(`Scraping images for chapter: ${chapter.slug}`);
+          console.log(`กำลังดึงรูปภาพสำหรับตอน: ${chapter.slug}`);
           const imageUrls = await scrapeChapterImages(page, chapter.urlScrape);
 
-          let pageNumber = 1;
-          for (const imageUrl of imageUrls) {
-            try {
-              const uploadedImageUrl = await this.awsService.uploadImageFromUrl(
-                imageUrl,
-                manga.title,
-                chapter.title || `page-${pageNumber}`,
-              );
+          // ใช้ Promise.all สำหรับการอัปโหลดพร้อมกัน
+          await Promise.all(
+            imageUrls.map(async (imageUrl, pageNumber) => {
+              try {
+                const uploadedImageUrl =
+                  await this.awsService.uploadImageFromUrl(
+                    imageUrl,
+                    manga.title,
+                    chapter.title || `page-${pageNumber + 1}`,
+                  );
 
-              await this.databaseService.page.create({
-                data: {
-                  imageUrl: uploadedImageUrl,
-                  pageNumber: pageNumber++,
-                  chapter: { connect: { id: chapter.id } },
-                },
-              });
+                await this.databaseService.page.create({
+                  data: {
+                    imageUrl: uploadedImageUrl,
+                    pageNumber: pageNumber + 1,
+                    chapter: { connect: { id: chapter.id } },
+                  },
+                });
 
-              console.log(
-                `Image saved to S3 and database: ${uploadedImageUrl}`,
-              );
-            } catch (error) {
-              console.error(`Error uploading image to S3: ${error.message}`);
-            }
-          }
+                console.log(
+                  `รูปภาพถูกบันทึกลง S3 และฐานข้อมูล: ${uploadedImageUrl}`,
+                );
+              } catch (error) {
+                console.error(
+                  `เกิดข้อผิดพลาดในการอัปโหลดรูปภาพไปที่ S3: ${error.message}`,
+                );
+              }
+            }),
+          );
         }
       }
 
@@ -230,7 +237,7 @@ export class JobProcessor extends WorkerHost {
         data: { isComplete: true, status: 'complete' },
       });
     } catch (error) {
-      console.log('Error:', error.message);
+      console.log('เกิดข้อผิดพลาด:', error.message);
 
       await this.databaseService.job.update({
         where: { id: job.data.id },
@@ -239,7 +246,7 @@ export class JobProcessor extends WorkerHost {
     } finally {
       if (browser) {
         await browser.close();
-        console.log('Browser closed successfully.');
+        console.log('เบราว์เซอร์ถูกปิดเรียบร้อยแล้ว.');
       }
     }
   }
