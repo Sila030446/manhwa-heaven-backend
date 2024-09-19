@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { MangaModule } from './manga/manga.module';
+import { makimaSearchModule } from './makimaSearch/makimaSearch.module';
 import { JobModule } from './job/job.module';
 import { DatabaseModule } from './database/database.module';
 import { BullModule } from '@nestjs/bullmq';
@@ -15,7 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ScheduleModule.forRoot(),
     ConfigModule.forRoot(),
     AwsModule,
-    MangaModule,
+    makimaSearchModule,
     JobModule,
     DatabaseModule,
     BullModule.forRoot({

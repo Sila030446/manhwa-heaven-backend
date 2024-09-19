@@ -23,7 +23,7 @@ export class JobProcessor extends WorkerHost {
   }
 
   // This method runs every 24 hours
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async handleScheduledJob() {
     console.log('Checking for updates...');
 
@@ -59,7 +59,15 @@ export class JobProcessor extends WorkerHost {
     let browser: Browser | undefined = undefined;
 
     try {
-      browser = await puppeteer.launch();
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+        ],
+      });
       const page = await browser.newPage();
 
       if (!job.data.url || !job.data.jobType) {

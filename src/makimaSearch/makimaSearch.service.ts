@@ -2,14 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as puppeteer from 'puppeteer';
 
 @Injectable()
-export class MangaService {
-  private readonly logger = new Logger(MangaService.name);
+export class makimaSearchService {
+  private readonly logger = new Logger(makimaSearchService.name);
 
   async getSearchManga(searchParams: string) {
     let browser;
     try {
       // Launch browser with necessary settings
-      browser = await puppeteer.launch({ headless: false });
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
 
       const page = await browser.newPage();
       const url = `https://makimaaaaa.com/?s=${searchParams}`;

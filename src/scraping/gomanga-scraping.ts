@@ -86,7 +86,9 @@ export const startGoMangaScraping = async (
       const status = getText(
         'div.seriestucont > div > table > tbody > tr:nth-child(1) > td:nth-child(2)',
       );
-      const genres = getGenres('div.seriestucont > div > div > a');
+      const genres = getGenres(
+        'div.seriestucon > div.seriestucontent > div.seriestucontentr > div.seriestucont > div > div > a',
+      );
 
       const chapters = Array.from(
         document.querySelectorAll('#chapterlist > ul > li > div > div > a'),
