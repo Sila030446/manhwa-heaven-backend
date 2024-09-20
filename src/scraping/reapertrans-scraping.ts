@@ -33,31 +33,29 @@ export const startReaperTransScraping = async (
 
       const title =
         document.querySelector(
-          'div.bixbox.animefull > div.bigcontent.nobigcover > div.infox > h1',
+          'div.bixbox.animefull > div.bigcontent > div.infox > h1',
         )?.textContent || 'Unknown Title';
 
       const titleSlug = generateSlug(title);
 
       const alternativeTitle =
         document.querySelector(
-          'div.bigcontent.nobigcover > div.infox > div:nth-child(2) > span',
+          'div.bigcontent > div.infox > div:nth-child(2) > span',
         )?.textContent || '';
 
       const coverImageUrl =
         document
-          .querySelector(
-            'div.bigcontent.nobigcover > div.thumbook > div.thumb > img',
-          )
+          .querySelector('div.bigcontent > div.thumbook > div.thumb > img')
           ?.getAttribute('src') || '';
 
       const description =
         document.querySelector(
-          'div.bigcontent.nobigcover > div.infox > div:nth-child(3) > div > p',
+          'div.bigcontent > div.infox > div:nth-child(3) > div > p',
         )?.textContent || 'No description';
 
       const serialization =
         document.querySelector(
-          'div.bigcontent.nobigcover > div.infox > div:nth-child(6) > div:nth-child(1) > span',
+          'div.bigcontent > div.infox > div:nth-child(6) > div:nth-child(1) > span',
         )?.textContent || 'Unknown serialization';
 
       const getText = (selector: string) =>
@@ -76,20 +74,20 @@ export const startReaperTransScraping = async (
         });
 
       const authors = getText(
-        'div.bigcontent.nobigcover > div.infox > div:nth-child(4) > div:nth-child(2) > span',
+        'div.bigcontent > div.infox > div:nth-child(4) > div:nth-child(2) > span',
       );
       const artist = getText(
-        'div.bigcontent.nobigcover > div.infox > div:nth-child(5) > div > span',
+        'div.bigcontent > div.infox > div:nth-child(5) > div > span',
       );
 
       const type = getText(
-        'div.bigcontent.nobigcover > div.thumbook > div.rt > div.tsinfo > div:nth-child(2) > a',
+        'div.bigcontent > div.thumbook > div.rt > div.tsinfo > div:nth-child(2) > a',
       );
       const status = getText(
-        'div.bigcontent.nobigcover > div.thumbook > div.rt > div.tsinfo > div:nth-child(1) > i',
+        'div.bigcontent > div.thumbook > div.rt > div.tsinfo > div:nth-child(1) > i',
       );
       const genres = getGenres(
-        'div.bigcontent.nobigcover > div.infox > div:nth-child(8) > span > a:nth-child(1)',
+        'div.bigcontent > div.infox > div:nth-child(8) > span > a:nth-child(1)',
       );
 
       const chapters = Array.from(
