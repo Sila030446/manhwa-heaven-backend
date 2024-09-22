@@ -7,34 +7,42 @@ import { DatabaseModule } from './database/database.module';
 import { BullModule } from '@nestjs/bullmq';
 import { AwsService } from './aws/aws.service';
 import { AwsModule } from './aws/aws.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { MangaModule } from './manga/manga.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({
+      isGlobal: true, // Make the config module available globally
+    }),
     AwsModule,
     makimaSearchModule,
     JobModule,
     DatabaseModule,
-    BullModule.forRoot({
-      connection: {
-        host: 'localhost',
-        port: 6379,
-        maxRetriesPerRequest: null,
-      },
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('REDIS_HOST'),
+          port: configService.get<number>('REDIS_PORT'),
+          maxRetriesPerRequest: null,
         },
-      },
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+        },
+      }),
     }),
     BullModule.registerQueue({
       name: 'jobsQueue',
     }),
+    MangaModule,
   ],
   controllers: [AppController],
   providers: [AppService, AwsService],
