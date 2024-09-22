@@ -24,10 +24,10 @@ import { MangaModule } from './manga/manga.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: () => ({
         connection: {
-          host: configService.get<string>('REDIS_HOST'),
-          port: configService.get<number>('REDIS_PORT'),
+          host: 'redis',
+          port: 6379,
           maxRetriesPerRequest: null,
         },
         defaultJobOptions: {
